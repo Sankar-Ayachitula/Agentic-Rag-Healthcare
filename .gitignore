@@ -19,9 +19,10 @@ chroma_db/
 **/chroma/
 **/vectorstore*/
 
-# Large data (download/copy locally; see data/README.md)
+# Data (copy locally from reference; see data/README.md) — keep repo lean
 data/encyclopedias/
 data/*.pdf
+data/*.csv
 
 # Node / frontend
 node_modules/
