@@ -1,0 +1,35 @@
+# Secrets
+.env
+apikey.txt
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# ML artifacts & vector stores (rebuilt locally, not committed)
+backend/models/artifacts/*.pkl
+backend/models/artifacts/*.joblib
+*.faiss
+chroma_db/
+**/chroma/
+**/vectorstore*/
+
+# Large data (download/copy locally; see data/README.md)
+data/encyclopedias/
+data/*.pdf
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
