@@ -17,6 +17,10 @@ _model = _bundle["model"]
 _vocab = _bundle["vocab"]            # ordered list of known symptoms
 _weight_of = _bundle["weight_of"]    # symptom name -> severity weight
 
+# Public: the symptom vocabulary the model understands. The symptom extractor
+# targets these exact labels when mapping free text.
+VOCAB = _vocab
+
 
 def _symptoms_to_features(symptoms):
     """Build the SAME kind of vector the model was trained on.

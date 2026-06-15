@@ -9,10 +9,10 @@ This is what stops the model from making medical facts up.
 
 from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from backend import config
+from backend.models.llm import get_llm
 
 # Same embedding model we built the stores with — the query must be embedded
 # the same way as the documents, or "nearest" means nothing.
@@ -42,23 +42,6 @@ _PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
-# Lazily created so importing this module doesn't require a key.
-_llm = None
-
-
-def _get_llm():
-    global _llm
-    if _llm is None:
-        config.require_llm_key()
-        # temperature=0 -> deterministic, factual answers (no creativity).
-        _llm = ChatGroq(
-            model=config.LLM_MODEL,
-            api_key=config.GROQ_API_KEY,
-            temperature=0,
-        )
-    return _llm
-
-
 def retrieve(query, k=4, store="encyclopedia"):
     """Return the k most relevant chunks for a query."""
     db = _encyclopedia if store == "encyclopedia" else _symptoms
@@ -73,7 +56,7 @@ def answer(question, k=4, store="encyclopedia"):
     docs = retrieve(question, k=k, store=store)
     context = "\n\n".join(doc.page_content for doc in docs)
     messages = _PROMPT.format_messages(context=context, question=question)
-    response = _get_llm().invoke(messages)
+    response = get_llm().invoke(messages)
     return response.content, docs
 
 
