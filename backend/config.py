@@ -13,7 +13,7 @@ load_dotenv()  # reads key=value pairs from the .env file into the environment
 # LLM provider: Groq (free, fast, OpenAI-compatible). Get a key at
 # https://console.groq.com -> API Keys.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
 
 # Embeddings stay free and local — no provider needed.
 EMBEDDING_MODEL = os.getenv(

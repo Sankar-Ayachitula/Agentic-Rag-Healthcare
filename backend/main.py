@@ -11,9 +11,11 @@ from typing import List, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.models.orchestrator import run
+from backend.models.streaming import stream_events
 
 app = FastAPI(title="Agentic RAG Healthcare", version="1.0")
 
@@ -49,7 +51,7 @@ def health():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    """Run a user message through the agent and return its answer."""
+    """Run a user message through the agent and return its answer (all at once)."""
     result = run(request.message)
     return ChatResponse(
         answer=result.get("answer", ""),
@@ -57,4 +59,12 @@ def chat(request: ChatRequest):
         disease=result.get("disease"),
         symptoms=result.get("symptoms"),
         sources=result.get("sources"),
+    )
+
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    """Same routing as /chat, but streams the answer token-by-token as SSE."""
+    return StreamingResponse(
+        stream_events(request.message), media_type="text/event-stream"
     )
