@@ -35,7 +35,7 @@ intent classifier ───┬── symptom_report  ─► extract symptoms ─
 - **Orchestration:** LangGraph (agentic routing) + LangChain
 - **Prediction:** scikit-learn `RandomForestClassifier`
 - **RAG:** ChromaDB vector stores; `sentence-transformers` embeddings (free, local)
-- **LLM:** Groq (`llama-3.3-70b-versatile`) — free, fast, OpenAI-compatible
+- **LLM:** Groq (`openai/gpt-oss-120b`) — free, fast, OpenAI-compatible; supports token streaming
 - **API:** FastAPI (Day 6)
 - **Client:** native Android app — Kotlin + Jetpack Compose (Day 6)
 
