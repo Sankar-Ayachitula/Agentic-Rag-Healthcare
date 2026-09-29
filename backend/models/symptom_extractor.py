@@ -36,17 +36,32 @@ def extract(message):
     messages = _PROMPT.format_messages(vocab=", ".join(_VOCAB), message=message)
     raw = get_llm().invoke(messages).content.strip()
 
-    # The model should return JSON; parse it, and guard against stray text.
-    try:
-        labels = json.loads(raw)
-    except json.JSONDecodeError:
-        # Sometimes models wrap JSON in ```code fences``` — strip and retry.
-        cleaned = raw.strip("`").replace("json", "", 1).strip()
-        labels = json.loads(cleaned)
+    labels = _parse_labels(raw)
 
-    # Keep only labels that really exist in our vocabulary (drop hallucinations).
+    # Keep only labels that really exist in our vocabulary (drop hallucinations),
+    # without duplicates, in the order the model gave them.
     valid = set(_VOCAB)
-    return [label for label in labels if label in valid]
+    return list(dict.fromkeys(label for label in labels if label in valid))
+
+
+def _parse_labels(raw):
+    """Parse the model's JSON array, tolerating code fences / stray text.
+
+    Returns [] if nothing usable comes back, so the agent asks the user to
+    rephrase instead of crashing.
+    """
+    # Sometimes models wrap JSON in ```code fences``` or add a sentence around
+    # it; the array itself is everything between the first [ and the last ].
+    start, end = raw.find("["), raw.rfind("]")
+    if start == -1 or end < start:
+        return []
+    try:
+        labels = json.loads(raw[start : end + 1])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(labels, list):
+        return []
+    return [label.strip() for label in labels if isinstance(label, str)]
 
 
 if __name__ == "__main__":

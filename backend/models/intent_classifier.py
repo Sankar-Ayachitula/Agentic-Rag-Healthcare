@@ -31,7 +31,8 @@ _PROMPT = ChatPromptTemplate.from_messages(
 def classify(message):
     """Return one of VALID_INTENTS for the given message."""
     response = get_llm().invoke(_PROMPT.format_messages(message=message))
-    label = response.content.strip().lower()
+    # Models sometimes wrap the label in quotes/backticks or add a full stop.
+    label = response.content.strip().strip("`'\".").strip().lower()
     # Be defensive: if the model adds stray text, fall back to a safe default.
     return label if label in VALID_INTENTS else "medical_question"
 

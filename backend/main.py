@@ -7,15 +7,21 @@ Run from the project root:
     uvicorn backend.main:app --reload
 """
 
+import logging
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from backend.models.orchestrator import run
 from backend.models.streaming import stream_events
+
+logger = logging.getLogger(__name__)
+
+# Longest message we accept; keeps a single request from blowing up the LLM prompt.
+MAX_MESSAGE_CHARS = 2000
 
 app = FastAPI(title="Agentic RAG Healthcare", version="1.0")
 
@@ -31,7 +37,16 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     """What the client sends."""
-    message: str
+    message: str = Field(..., max_length=MAX_MESSAGE_CHARS)
+
+    @field_validator("message")
+    @classmethod
+    def not_blank(cls, value):
+        """Reject empty / whitespace-only messages (FastAPI returns 422)."""
+        value = value.strip()
+        if not value:
+            raise ValueError("message must not be empty")
+        return value
 
 
 class ChatResponse(BaseModel):
@@ -52,7 +67,15 @@ def health():
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     """Run a user message through the agent and return its answer (all at once)."""
-    result = run(request.message)
+    try:
+        result = run(request.message)
+    except Exception:
+        # Usually the LLM provider (bad key, rate limit, outage). Log the details
+        # server-side; give the client a clean error instead of a stack trace.
+        logger.exception("chat failed")
+        raise HTTPException(
+            status_code=503, detail="The assistant is temporarily unavailable."
+        )
     return ChatResponse(
         answer=result.get("answer", ""),
         intent=result.get("intent"),

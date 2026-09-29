@@ -36,8 +36,9 @@ intent classifier ───┬── symptom_report  ─► extract symptoms ─
 - **Prediction:** scikit-learn `RandomForestClassifier`
 - **RAG:** ChromaDB vector stores; `sentence-transformers` embeddings (free, local)
 - **LLM:** Groq (`openai/gpt-oss-120b`) — free, fast, OpenAI-compatible; supports token streaming
-- **API:** FastAPI (Day 6)
-- **Client:** native Android app — Kotlin + Jetpack Compose (Day 6)
+- **API:** FastAPI — `POST /chat` (full answer) and `POST /chat/stream` (SSE token streaming)
+- **Client:** native Android app — Kotlin + Jetpack Compose, in its own repo:
+  [Agentic-Rag-Healthcare-Android](https://github.com/Sankar-Ayachitula/Agentic-Rag-Healthcare-Android)
 
 ## Setup
 ```bash
@@ -55,10 +56,32 @@ python -m backend.training.build_vectorstore_symptom  # 41 disease cards -> Chro
 python -m backend.training.build_vectorstore_pdf      # encyclopedia -> Chroma (slow)
 ```
 
+The trained model (`backend/models/artifacts/predictor.joblib`) is gitignored,
+so re-run `train_predictor` after pulling changes to the training code.
+
 ## Try it (CLI)
 ```bash
 python -m backend.models.orchestrator   # runs sample messages through the agent
 ```
+
+## Run the API
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+- `GET /` — health check
+- `POST /chat` — `{"message": "..."}` → `{answer, intent, disease, symptoms, sources}`
+- `POST /chat/stream` — same input, answer streamed as Server-Sent Events:
+  one `meta` event, many `token` events, then `done` (or `error` if the LLM fails)
+
+Empty messages are rejected with `422`; an LLM/provider failure returns `503`
+on `/chat` and an `error` event on `/chat/stream`.
+
+## Tests & evaluation
+```bash
+pytest                                  # unit + integration + end-to-end API
+python -m backend.training.evaluate     # classifier CV + retrieval recall@k
+```
+Tests that call the LLM auto-skip when `GROQ_API_KEY` isn't set.
 
 ## Data sources
 All data is **public**; none is real patient data.
@@ -70,6 +93,15 @@ All data is **public**; none is real patient data.
 The Kaggle data is clean and balanced by design — great for demonstrating the
 pipeline, not for clinical claims.
 
+Two training details matter for real use:
+- Symptom names are normalized (spaces removed), because the two CSVs spell a
+  few differently (`dischromic _patches` vs `dischromic_patches`); otherwise
+  those symptoms are silently dropped.
+- Users mention only a few symptoms, so training is augmented with random
+  symptom subsets per disease. On 3–4-symptom inputs this raises top-1
+  accuracy from ~77% to ~93% (e.g. fever + chills + headache + vomiting now
+  predicts Malaria, not Paralysis).
+
 ---
 
 ## Build log
@@ -78,5 +110,5 @@ pipeline, not for clinical claims.
 - **Day 3** — vector stores / embeddings ✅
 - **Day 4** — RAG chain + intent classifier + symptom extractor ✅
 - **Day 5** — LangGraph orchestrator (full pipeline) ✅
-- **Day 6** — FastAPI endpoint + Android client ⬜
-- **Day 7** — tests, eval, polish ⬜
+- **Day 6** — FastAPI endpoint + Android client ✅
+- **Day 7** — tests, eval, polish ✅

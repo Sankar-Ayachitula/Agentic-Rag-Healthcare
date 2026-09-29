@@ -7,14 +7,28 @@ SSE protocol (one JSON object per `data:` line):
   {"type": "meta",  "intent": ..., "disease": ..., "symptoms": [...], "sources": [pages]}
   {"type": "token", "text": "..."}      # many of these, in order
   {"type": "done"}
+If anything fails (e.g. the LLM provider is down), the stream instead ends with:
+  {"type": "error", "message": "..."}
 """
 
 import json
+import logging
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.models import intent_classifier, predictor, rag_chain, symptom_extractor
 from backend.models.llm import get_llm
+
+logger = logging.getLogger(__name__)
+
+_ERROR_MESSAGE = "The assistant is temporarily unavailable. Please try again."
+
+# The streaming endpoint serves the phone app: keep answers readable on a
+# narrow screen.
+_MOBILE_FORMAT = (
+    " Format for a phone screen: short paragraphs and bullet points, "
+    "no tables."
+)
 
 _SYMPTOM_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -24,7 +38,7 @@ _SYMPTOM_PROMPT = ChatPromptTemplate.from_messages(
             "a model predicted the most likely condition is '{disease}'. Using ONLY "
             "the context below, briefly explain that condition and its precautions. "
             "Make clear this is not a diagnosis and they should consult a real "
-            "doctor. Education only.\n\nContext:\n{context}",
+            "doctor. Education only." + _MOBILE_FORMAT + "\n\nContext:\n{context}",
         ),
         ("human", "My symptoms: {symptoms}"),
     ]
@@ -37,8 +51,9 @@ _QUESTION_PROMPT = ChatPromptTemplate.from_messages(
             "You are a careful medical information assistant. Answer the question "
             "using ONLY the context below. If the context does not contain the "
             "answer, say you don't know, do not guess. Always remind the user to "
-            "consult a real doctor. This is for education, not diagnosis.\n\n"
-            "Context:\n{context}",
+            "consult a real doctor. This is for education, not diagnosis."
+            + _MOBILE_FORMAT
+            + "\n\nContext:\n{context}",
         ),
         ("human", "{question}"),
     ]
@@ -67,7 +82,19 @@ def _pages(docs):
 
 
 def stream_events(message):
-    """Yield SSE strings: one meta event, then token events, then done."""
+    """Yield SSE strings: one meta event, then token events, then done.
+
+    Errors become a final `error` event rather than a silently dropped
+    connection, so the client can tell the user what happened.
+    """
+    try:
+        yield from _stream_events(message)
+    except Exception:
+        logger.exception("chat stream failed")
+        yield _sse({"type": "error", "message": _ERROR_MESSAGE})
+
+
+def _stream_events(message):
     intent = intent_classifier.classify(message)
     disease = None
     symptoms = []
