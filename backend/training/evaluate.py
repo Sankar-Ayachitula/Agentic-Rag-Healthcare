@@ -3,15 +3,19 @@
 Deterministic, reproducible, defensible evals:
 
   1. Classifier: 5-fold cross-validated accuracy / precision / recall / F1.
-  2. Encyclopedia retrieval recall@k: query "What is {disease}?" and count a hit
+  2. Classifier on partial inputs: users name only a few symptoms, so sample
+     3-4 of each disease's symptoms and check top-1 / top-3 accuracy.
+  3. Encyclopedia retrieval recall@k: query "What is {disease}?" and count a hit
      if the target disease term appears in a retrieved chunk. This is the RAG
      path the app uses for medical questions (the headline retrieval metric).
-  3. Symptom-store retrieval recall@k: query by raw symptoms and check whether
+  4. Symptom-store retrieval recall@k: query by raw symptoms and check whether
      the correct disease card is retrieved (a harder cross-modal match).
 
 Run from the project root:
     python -m backend.training.evaluate
 """
+
+import random
 
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
@@ -23,7 +27,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
-from backend.training.train_predictor import build_features, load_data
+from backend.training.train_predictor import build_features, load_data, normalize_symptom
 
 KS = (1, 3, 5)
 
@@ -45,6 +49,33 @@ def evaluate_classifier():
     print(f"recall(macro)   : {recall_score(y, preds, average='macro', zero_division=0):.3f}")
     print(f"f1(macro)       : {f1_score(y, preds, average='macro'):.3f}")
     print("note: ~1.0 reflects the clean synthetic dataset, not clinical readiness.")
+
+
+def evaluate_partial_symptoms(samples_per_disease=30, seed=0):
+    """Top-1/top-3 of the saved model when given only 3-4 of a disease's symptoms."""
+    from backend.models import predictor
+
+    df, _ = load_data()
+    symptoms_of = {}
+    for _, row in df.iterrows():
+        cells = [normalize_symptom(c) for c in row[1:] if pd.notna(c)]
+        symptoms_of.setdefault(row["Disease"], set()).update(cells)
+
+    rng = random.Random(seed)
+    top1 = top3 = total = 0
+    for disease, symptoms in sorted(symptoms_of.items()):
+        symptoms = sorted(symptoms)
+        for _ in range(samples_per_disease):
+            sample = rng.sample(symptoms, min(rng.choice([3, 4]), len(symptoms)))
+            ranked = [d for d, _ in predictor.predict(sample, top_k=3)]
+            top1 += ranked[0] == disease
+            top3 += disease in ranked
+            total += 1
+
+    print("\n=== CLASSIFIER on partial inputs (3-4 symptoms, saved model) ===")
+    print(f"queries: {total}")
+    print(f"top-1 accuracy: {top1 / total:.3f}")
+    print(f"top-3 accuracy: {top3 / total:.3f}")
 
 
 def _base_term(name):
@@ -108,5 +139,6 @@ def evaluate_symptom_retrieval():
 
 if __name__ == "__main__":
     evaluate_classifier()
+    evaluate_partial_symptoms()
     evaluate_encyclopedia_retrieval()
     evaluate_symptom_retrieval()

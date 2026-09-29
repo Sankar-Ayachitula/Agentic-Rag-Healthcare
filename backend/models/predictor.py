@@ -9,6 +9,8 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+from backend.training.train_predictor import normalize_symptom
+
 ARTIFACT_PATH = Path("backend/models/artifacts/predictor.joblib")
 
 # Load once at import time (cheap, and avoids re-reading the file every call).
@@ -30,7 +32,7 @@ def _symptoms_to_features(symptoms):
     """
     vec = {symptom: 0 for symptom in _vocab}
     for s in symptoms:
-        s = s.strip()
+        s = normalize_symptom(s)
         if s in vec:
             vec[s] = _weight_of[s]
     # Return a one-row DataFrame with named columns in the exact training

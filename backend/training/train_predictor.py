@@ -4,14 +4,17 @@ Pipeline:
   1. Load the symptom dataset + severity weights.
   2. Convert each patient row into a numeric feature vector
      (one column per known symptom, value = severity weight if present else 0).
-  3. Train a RandomForest classifier.
-  4. Evaluate accuracy on held-out data.
-  5. Save the model + vocabulary so we can predict later.
+  3. Augment the training rows with random subsets of each disease's symptoms,
+     because real users describe only a few symptoms, not the full list.
+  4. Train a RandomForest classifier.
+  5. Evaluate accuracy on held-out data.
+  6. Save the model + vocabulary so we can predict later.
 
 Run from the project root:
     python -m backend.training.train_predictor
 """
 
+import random
 from pathlib import Path
 
 import joblib
@@ -24,13 +27,27 @@ from sklearn.model_selection import train_test_split
 DATA_DIR = Path("data")
 ARTIFACTS_DIR = Path("backend/models/artifacts")
 
+# Synthetic partial-symptom rows added per disease (see augment_with_subsets).
+SUBSETS_PER_DISEASE = 200
+
+
+def normalize_symptom(name):
+    """Canonical symptom label.
+
+    The two CSVs disagree on stray spaces (e.g. "dischromic _patches" vs
+    "dischromic_patches", "foul_smell_of urine" vs "foul_smell_ofurine"), so
+    drop every space. Without this those symptoms are silently ignored.
+    """
+    return str(name).replace(" ", "")
+
 
 def load_data():
     """Read the two CSVs we need."""
     df = pd.read_csv(DATA_DIR / "dataset.csv")
+    df["Disease"] = df["Disease"].str.strip()
     severity = pd.read_csv(DATA_DIR / "Symptom-severity.csv")
-    # The severity symptom names have stray spaces in a few places — clean them.
-    severity["Symptom"] = severity["Symptom"].str.strip()
+    # The symptom names have stray spaces in a few places — clean them.
+    severity["Symptom"] = severity["Symptom"].map(normalize_symptom)
     return df, severity
 
 
@@ -48,12 +65,34 @@ def build_features(df, weight_of, vocab):
         vec = {symptom: 0 for symptom in vocab}          # all symptoms absent
         for cell in row[1:]:                              # skip the Disease column
             if pd.notna(cell):                            # ignore blank slots
-                symptom = str(cell).strip()               # fix the stray spaces
+                symptom = normalize_symptom(cell)         # fix the stray spaces
                 if symptom in vec:                        # known symptom?
                     vec[symptom] = weight_of[symptom]     # mark present, weighted
         rows.append(vec)
     # DataFrame with one column per symptom, in a fixed order
     return pd.DataFrame(rows)[vocab]
+
+
+def augment_with_subsets(X, y, per_disease=SUBSETS_PER_DISEASE, seed=42):
+    """Add rows that contain only a random subset of a disease's symptoms.
+
+    The dataset's rows list most of a disease's symptoms, but a user typically
+    mentions 2-4. Without these rows the forest ranks partial inputs poorly
+    (e.g. fever + chills + headache + vomiting -> not Malaria).
+    """
+    rng = random.Random(seed)
+    extra_X, extra_y = [], []
+    for disease in sorted(y.unique()):
+        # Every symptom column seen for this disease, with its weight.
+        present = X[y == disease].max()
+        symptoms = sorted(present[present > 0].index)
+        for _ in range(per_disease):
+            chosen = rng.sample(symptoms, rng.randint(2, len(symptoms)))
+            extra_X.append({s: (present[s] if s in chosen else 0) for s in X.columns})
+            extra_y.append(disease)
+    X_aug = pd.concat([X, pd.DataFrame(extra_X)[list(X.columns)]], ignore_index=True)
+    y_aug = pd.concat([y, pd.Series(extra_y)], ignore_index=True)
+    return X_aug, y_aug
 
 
 def main():
@@ -76,6 +115,9 @@ def main():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
+
+    # Augment only the training split, so the test set stays real rows.
+    X_train, y_train = augment_with_subsets(X_train, y_train)
 
     # A RandomForest = many decision trees voting together. Solid default.
     model = RandomForestClassifier(n_estimators=100, random_state=42)
