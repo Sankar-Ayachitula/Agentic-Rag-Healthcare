@@ -12,7 +12,29 @@ small talk just gets a reply. Answers are **grounded** in retrieved text and
 
 ---
 
+## Demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="MedAssist Android app streaming answers" width="320">
+</p>
+
+The [Android app](https://github.com/Sankar-Ayachitula/Agentic-Rag-Healthcare-Android)
+talking to this backend: a symptom report is routed to the disease classifier
+(**Likely: Malaria**), then a medical question is answered from the encyclopedia.
+Replies stream in token by token. [Full-quality video](docs/demo.mp4).
+
+---
+
 ## Architecture
+
+The LangGraph agent, rendered with `graph.get_graph().draw_mermaid_png()`:
+
+<p align="center">
+  <img src="docs/agent_graph.png" alt="LangGraph agent graph" width="520">
+</p>
+
+`classify` is a conditional edge: each message goes to exactly one branch.
+In more detail:
 
 ```
 user message
